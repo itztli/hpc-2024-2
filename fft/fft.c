@@ -115,28 +115,30 @@ void realft(float data[], unsigned long n, int isign){
 
 //2^n = 1024  ->   n = log_2(1024) = 10
 int main(){
-  float signal[1024];
   unsigned long nn = 10;
   int isign = 1;
   float theta = 0.0;
-  float dtheta = 60.0*PI/1024.0;
-
-  for (int i=0;i<512;i++){
-    signal[2*i] = cos(theta);
-    signal[(2*i)+1] = sin(theta);
+  float frequency = 120.0;
+  float sampling = 1024.0; // # muestras x segundo
+  float dtheta = frequency*2.0*PI/sampling;
+  float signal[((int)sampling)*2];
+  
+  for (int i=0;i<((int)sampling);i++){
+    signal[2*i] = cos(theta)+cos(0.5*theta) ;
+    signal[(2*i)+1] = sin(theta)+sin(0.5*theta);
     theta += dtheta;
   }
   
-  //for (int i=0;i<1024;i++){
-  //  printf("%f\n",signal[i]);
+  //for (int i=0;i < ((int)sampling) ;i++){
+  //  printf("%f\n",signal[2*i]);
   //}
 
   //printf("Applying FFT\n");
   //four1(signal, nn, isign);
-  realft(signal, 1024, isign);
+  realft(signal, (int)sampling * 2, isign);
 
-    for (int i=0;i<1024;i++){
-    printf("%f\n",signal[i]);
+  for (int i=0;i< (int)sampling; i++){
+    printf("%f\n",signal[2*i]);
   }
   
   return 0;
