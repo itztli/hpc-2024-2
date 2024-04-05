@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <mpi.h>
+
 #define SWAP(a,b) tempr=(a);(a)=(b);(b)=tempr
 #ifndef PI
 #define PI 3.14159265358979323846
@@ -141,9 +143,12 @@ int main(int argc, char **argv){
   float dtheta = frequency*2.0*PI/sampling;
   //float signal[((int)sampling)*2];
   float *signal;
-  int i;
+  float *subset;
+  int i,itera;
   char comando[256];
   char inputfile[256];
+  char outputfile[256];
+  char window_str[256];
   int signal_flag=0;
   int spectrum_flag=0;
   int synthetic_flag=0;
@@ -152,25 +157,36 @@ int main(int argc, char **argv){
   char *line;
   char *clean;
   int N;
+  int window = 1024;
+  MPI_Status status;
+  int n_proc; // # total de procesos
+  int my_proc; // El proceso actual
 
+  MPI_Init (&argc, &argv); /* Inicializar MPI */
+  MPI_Comm_rank(MPI_COMM_WORLD,&my_proc); /* Determinar el rango del proceso invocado*/
+  MPI_Comm_size(MPI_COMM_WORLD,&n_proc); /* Determinar el numero de procesos */
+  MPI_Barrier (MPI_COMM_WORLD);
   
-  for (i=1; i<argc;i++){
+  if (my_proc==0){
+    
+    for (i=1; i<argc;i++){
       sprintf(comando,"%s",argv[i]);
-
+      
       if (strcmp(comando,"-signal") == 0){
-    	  signal_flag = 1;
+	signal_flag = 1;
       }
+      
       if (strcmp(comando,"-spectrum") == 0){
-    	  spectrum_flag = 1;
+	spectrum_flag = 1;
       }
       if (strcmp(comando,"-synthetic") == 0){
-    	  synthetic_flag = 1;
+	synthetic_flag = 1;
       }
       if (strcmp(comando,"-help") == 0){
 	printf("Flags: -signal, -spectrum, -synthetic, -file <archive>\n");
 	return 0;
       }
-
+      
       if (strcmp(comando,"-file") == 0){
         if (sprintf(inputfile,"%s",argv[++i]) > 0){
           //printf(".");
@@ -181,70 +197,128 @@ int main(int argc, char **argv){
           return 0;
         }
       }
-  }
-
-  if (synthetic_flag){
-    for (int i=0;i<((int)sampling);i++){
-      signal[2*i] = cos(theta)+cos(0.5*theta)+cos(10.0*theta);
-      signal[(2*i)+1] = sin(theta)+sin(0.5*theta)+sin(10.0*theta);
-      theta += dtheta;
+      
+      if (strcmp(comando,"-window") == 0){
+        if (sprintf(window_str,"%s",argv[++i]) > 0){
+          //printf(".");
+	  if (sscanf(window_str,"%i", &window) != 1){
+	    printf("Error: -window <size window (2^n)>\n");
+	    return 0;
+	  }
+	  // falta checar que window = 2^n
+        }else{
+	  printf("Error: -window <size window (2^n)>\n");
+          return 0;
+        }
+      }
+      
     }
-  }
-
-  if (inputfile_flag){
-    file = fopen(inputfile,"r");
-    if (file == NULL){
-      printf("Error 1: File %s not found.\n",inputfile);
-      exit(0);
-    }
-
-    line = malloc(sizeof(char)*64);
-    N=0;
-    while (fgets(line, 64, file ) != NULL){
-      clean = Clean(line);
-      if (strlen(clean)>0)
-	N++;
-    }
-    signal = malloc(sizeof(float)*N);
-
-    rewind(file);
-
-    i=0;
-    while (fgets(line, 64, file ) != NULL){
-      clean = Clean(line);
-      if (strlen(clean)>0){
-	sscanf(clean,"%f", &signal[i]);
-	i++;
+    
+    if (synthetic_flag){
+      for (int i=0;i<((int)sampling);i++){
+	signal[2*i] = cos(theta)+cos(0.5*theta)+cos(10.0*theta);
+	signal[(2*i)+1] = sin(theta)+sin(0.5*theta)+sin(10.0*theta);
+	theta += dtheta;
       }
     }
     
-    free(line);
-    fclose(file);
+    if (inputfile_flag){
+      file = fopen(inputfile,"r");
+      if (file == NULL){
+	printf("Error 1: File %s not found.\n",inputfile);
+	exit(0);
+      }
 
-    for(i=0;i<N;i++){
-      printf("%f,",signal[i]);
-    }
-    printf("\n");
-
-  }
+      line = malloc(sizeof(char)*64);
+      N=0;
+      while (fgets(line, 64, file ) != NULL){
+	clean = Clean(line);
+	if (strlen(clean)>0)
+	  N++;
+      }
+      
+      signal = malloc(sizeof(float)*N*2);
+      
+      rewind(file);
+      
+      i=0;
+      while (fgets(line, 64, file ) != NULL){
+	clean = Clean(line);
+	if (strlen(clean)>0){
+	  sscanf(clean,"%f", &signal[2*i]);
+	  signal[(2*i)+1] = 0.0;
+	  i++;
+	}
+      }
+      
+      free(line);
+      fclose(file);
+      /*  
+      for(i=0;i<N;i++){
+	printf("%f,",signal[i]);
+      }
+      printf("\n");
+      */
   
   
-  if (signal_flag){
-    for (int i=0;i < ((int)sampling) ;i++){
-      printf("%f\n",signal[2*i]);
+  
+    if (signal_flag){
+      for (int i=0;i < ((int)sampling) ;i++){
+	printf("%f\n",signal[2*i]);
+      }
     }
   }
 
+  } // master MPI
+
+
+  MPI_Barrier (MPI_COMM_WORLD);
+  
+  
+  
   //printf("Applying FFT\n");
   //four1(signal, nn, isign);
-  if (spectrum_flag){
-    realft(signal, (int)sampling * 2, isign);
-    
-    for (int i=0;i< (int)sampling; i++){
-      printf("%f\n",signal[2*i]);
+
+  if (my_proc==0){
+    if (spectrum_flag){
+      subset = malloc(sizeof(float)*window*2);
+      itera =  N / window;
+      if (itera > n_proc){
+	printf("Warning: iterations greather [%i] than numproc [%i]\n",itera, n_proc);
+      }
+      for (i=0; i < n_proc-1;i++){
+	memcpy(subset, &signal[2*i*window], window*2*sizeof(float));
+	printf("sending window %i\n",window);
+	MPI_Send(&window, 1, MPI_INT, i+1, 0,MPI_COMM_WORLD);
+	//MPI_Barrier (MPI_COMM_WORLD);	
+	printf("0 > %i subset[0]=%f\n",i+1, subset[2048]);
+	MPI_Send(subset, 2*window+1, MPI_FLOAT, i+1, 0,MPI_COMM_WORLD);
+      }
     }
+  free(subset);
+  free(signal);
+  }else{ // master MPI
+    MPI_Recv(&window, 1, MPI_INT, 0, 0, MPI_COMM_WORLD,&status);
+    printf("Receving window %i\n",window);
+    //MPI_Barrier (MPI_COMM_WORLD);
+    subset = malloc(sizeof(float)*window*2);
+    MPI_Recv(subset, 2*window+1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD,&status);
+    printf("%i < 0 subset[0]=%f\n",my_proc, subset[2048]);
+    isign=1;
+    realft(subset, 2*window, isign);
+   printf("%i < 0 fft[10]=%f\n",my_proc, subset[2048]);
+    
+    sprintf(outputfile,"spectrum-mpi-%i.dat",my_proc-1);
+    file = fopen(outputfile,"w");
+    for (int i=0;i< (int)window; i++){
+      fprintf(file,"%f\n",subset[2*i]);
+    }
+    free(subset);
+    fclose(file);
   }
 
-  free(signal);
+  MPI_Barrier (MPI_COMM_WORLD);
+  MPI_Finalize();
+
   return 0;
 }
