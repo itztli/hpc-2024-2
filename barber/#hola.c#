@@ -1,0 +1,104 @@
+
+if (rank != 0) { // Slaves
+    int buf;
+    //int Tb = 0;
+    buf = rank;
+    int flag_start = 1;
+    //MPI_Send(&mp, sizeof(mp), MPI_CHARACTER, n_proc, 98, MPI_COMM_WORLD);
+
+    mp.flag_start=flag_start; //first time flag_star==1
+    while(1){
+      MPI_Send(&mp, sizeof(mp), MPI_CHARACTER, 0, 0, MPI_COMM_WORLD); 
+      MPI_Recv(&mp, sizeof(mp), MPI_CHARACTER, 0, 0, MPI_COMM_WORLD, &status);
+      //printf("%i\t%i\t%i\t%lf\tComputing...\n",rank,mp.x,mp.y,mp.nu/1e9);   
+      mp.I_nu = depth_integrate(mp);
+      mp.miproc=rank;     
+    // buf contiene toda la informacion para el calculo del pixel x,y
+    // COMPUTE I
+    //Tb = compute_in_depth(buf);
+    }
+
+}
+else { // Master
+    int sum;
+    int flag = -1, res;
+    MPI_Request request;
+    MPI_Status status;
+    int buf;
+    int total = res*res;
+    int nready=0;
+    int apixel,bpixel;
+    int x0,x1,y1;
+
+    x0=x=mp.xini;
+    x1 = mp.xfin;
+    y = mp.yini;
+    y1= mp.yfin;
+    sum = 2-size;
+
+    while (1) { 
+    if(flag != 0)
+    {
+      MPI_Irecv(&mp, sizeof(mp), MPI_CHARACTER, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &request); 
+	//if res != 0 then buf = compute_new_xy();
+      //nready++;
+        flag = 0;
+
+    }
+        MPI_Test(&request, &flag, &status);
+
+        if (flag != 0) { 
+	  //printf("recv : %d, slave : %d\n", res, status.MPI_SOURCE);
+	        if (mp.flag_start == 1){
+		  mp.flag_start = 0;
+		}else{		  
+		  printf("%i\t%i\t%i\t%i\t%lf\t%lf\n",sum ,mp.miproc,mp.x,mp.y,mp.nu/1e9,C_light*C_light*mp.I_nu/(2.0*K*mp.nu*mp.nu));		  
+		}
+
+
+            if (status.MPI_SOURCE != -1){
+	      sum++;
+	      //buf = res*res;
+	      alpha = Alpha(mp.Rt,(double)x, mp.n); //ok
+	      beta = Beta(mp.Rt, (double)x,(double)y,mp.n); //ok     
+	      cuadrante = 0;
+	      if (alpha >= 0.0 && beta >= 0.0) cuadrante=1;
+	      if (alpha <= 0.0 && beta >= 0.0) cuadrante=2;
+	      if (alpha <= 0.0 && beta <= 0.0) cuadrante=3;
+	      if (alpha >= 0.0 && beta <= 0.0) cuadrante=4;
+	      mp.alpha = alpha;
+	      mp.beta = beta;
+	      mp.cuadrante=cuadrante;
+	      mp.x= x;
+	      mp.y= y;
+
+	      if (y <= (mp.n-1)/2){
+		MPI_Send(&mp, sizeof(mp), MPI_CHARACTER, status.MPI_SOURCE, 0, MPI_COMM_WORLD); 
+	      }
+	      
+	      x++;
+	      if (x == (x1+1) ){
+		x=x0;
+		y++;
+	      }
+
+
+	      if (y > (mp.n-1)/2){
+		y = y1+1;
+		
+	      }
+		
+
+	    }
+	    flag = -1;
+        }
+
+
+        if (sum == (n*n+1) ){
+	  //if (nready == total){
+	  break;
+	}
+    }
+
+    printf("Pixel computed: %d\n", sum-1);
+}
