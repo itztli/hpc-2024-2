@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <mpi.h>
+#include "myvar.h"
+
 
 #define SWAP(a,b) tempr=(a);(a)=(b);(b)=tempr
 #ifndef PI
@@ -161,7 +163,9 @@ int main(int argc, char **argv){
   MPI_Status status;
   int n_proc; // # total de procesos
   int my_proc; // El proceso actual
-
+  //MPI_myvar data_proc;
+  int index;
+  
   MPI_Init (&argc, &argv); /* Inicializar MPI */
   MPI_Comm_rank(MPI_COMM_WORLD,&my_proc); /* Determinar el rango del proceso invocado*/
   MPI_Comm_size(MPI_COMM_WORLD,&n_proc); /* Determinar el numero de procesos */
@@ -286,7 +290,7 @@ int main(int argc, char **argv){
       //}
       for (i=0; i < n_proc-1;i++){
 	//memcpy(subset, &signal[2*i*window], window*2*sizeof(float));
-	printf("Sending window %i\n",window);
+	//printf("Sending window %i\n",window);
 	MPI_Send(&window, 1, MPI_INT, i+1, 0,MPI_COMM_WORLD);
 	//MPI_Barrier (MPI_COMM_WORLD);	
 	//printf("0 > %i subset[0]=%f\n",i+1, subset[2048]);
@@ -297,7 +301,7 @@ int main(int argc, char **argv){
     //free(signal);
   }else{ // master MPI
     MPI_Recv(&window, 1, MPI_INT, 0, 0, MPI_COMM_WORLD,&status);
-    printf("Receving window %i\n",window);
+    //printf("Receving window %i\n",window);
     //MPI_Barrier (MPI_COMM_WORLD);
     subset = malloc(sizeof(float)*window*2);
     //MPI_Recv(subset, 2*window+1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD,&status);
@@ -329,21 +333,25 @@ int main(int argc, char **argv){
     //double F = 0.0; //result
     //data = 1;
     //range.F = 0.0;
-    
+    index=0;
+    //data_proc.subset = subset;
     while(1){
-      MPI_Send(subset, 2*window+1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD); 
+      //printf("%i:CODE1\n",my_proc);
+      MPI_Send(&index, 1, MPI_INTEGER, 0, 0, MPI_COMM_WORLD);
+      //printf("%i:CODE2\n",my_proc);
+      MPI_Recv(&index, 1, MPI_INTEGER, 0, 0, MPI_COMM_WORLD, &status);
       MPI_Recv(subset, 2*window+1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);
-      printf("%i:Processing FFT\n",my_proc);
+      //printf("%i:Processing FFT\n",my_proc);
       isign=1;
 
       realft(subset, 2*window, isign);
 
-      sprintf(outputfile,"spectrum-mpi-%i.dat",my_proc-1);
+      sprintf(outputfile,"spectrum-mpi-%i.dat",index);
       file = fopen(outputfile,"w");
       for (int i=0;i< (int)window; i++){
 	fprintf(file,"%f\n",subset[2*i]);
       }
-      fflush(file);
+      //fflush(file);
       fclose(file);
 
 
@@ -361,7 +369,9 @@ int main(int argc, char **argv){
     int n=0;
     while (1) {
       if(flag != 0){
-	MPI_Irecv(subset, 2*window+1, MPI_FLOAT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &request); 
+	//printf("A:receiving to...\n");
+	MPI_Irecv(&index, 1, MPI_INTEGER, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &request);
+	//printf("B:ok\n");
         flag = 0;
 	
       }
@@ -370,9 +380,18 @@ int main(int argc, char **argv){
 	if (status.MPI_SOURCE != -1){
 	  // sending information
 	  // segmentar la informacion para enviarla al nodo disponible
+	  //printf("C:copying\n");
+
 	  memcpy(subset, &signal[2*n*window], window*2*sizeof(float));
+	  
+	  //printf("C:ok %f\n",subset[0]);
+	  index = n;
+	  //data_proc.subset = subset;
+	  //printf("B:sending to...\n");
+	  MPI_Send(&index, 1, MPI_INTEGER, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
+	  MPI_Send(subset, 2*window+1, MPI_FLOAT, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
+	  //printf("B:Ready!\n");
 	  n++;
-	  MPI_Send(&subset, 2*window+1, MPI_FLOAT, status.MPI_SOURCE, 0, MPI_COMM_WORLD); 	
 	}	
       flag = -1;
       }
