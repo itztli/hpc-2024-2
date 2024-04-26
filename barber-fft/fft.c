@@ -4,7 +4,7 @@
 #include <string.h>
 #include <mpi.h>
 #include "myvar.h"
-
+#include "Timming.h"
 
 #define SWAP(a,b) tempr=(a);(a)=(b);(b)=tempr
 #ifndef PI
@@ -165,6 +165,9 @@ int main(int argc, char **argv){
   int my_proc; // El proceso actual
   //MPI_myvar data_proc;
   int index;
+  double utime0, stime0, wtime0,
+    utime1, stime1, wtime1,
+    utime2, stime2, wtime2;
   
   MPI_Init (&argc, &argv); /* Inicializar MPI */
   MPI_Comm_rank(MPI_COMM_WORLD,&my_proc); /* Determinar el rango del proceso invocado*/
@@ -172,8 +175,10 @@ int main(int argc, char **argv){
   MPI_Barrier (MPI_COMM_WORLD);
   
   if (my_proc==0){
+
     
     for (i=1; i<argc;i++){
+
       sprintf(comando,"%s",argv[i]);
       
       if (strcmp(comando,"-signal") == 0){
@@ -235,28 +240,45 @@ int main(int argc, char **argv){
 
       line = malloc(sizeof(char)*64);
       N=0;
+      uswtime(&utime2, &stime2, &wtime2); //tomando el tiempo  
+      printf("Calculating memory allocation.\n");
       while (fgets(line, 64, file ) != NULL){
-	clean = Clean(line);
-	if (strlen(clean)>0)
-	  N++;
+	//clean = Clean(line);
+	//if (strlen(clean)>0)
+	N++;
+	//free(clean);
       }
-      
+      printf("%fMB\n",sizeof(float)*N*2/1024.0/1024.0);
       signal = malloc(sizeof(float)*N*2);
       
       rewind(file);
-      
+
+      printf("Reading data.\n");
       i=0;
       while (fgets(line, 64, file ) != NULL){
-	clean = Clean(line);
-	if (strlen(clean)>0){
-	  sscanf(clean,"%f", &signal[2*i]);
-	  signal[(2*i)+1] = 0.0;
-	  i++;
-	}
+	//clean = Clean(line);
+	//if (strlen(clean)>0){
+	sscanf(line,"%f", &signal[2*i]);
+	signal[(2*i)+1] = 0.0;
+	i++;
+	//}
+	//free(clean);
       }
-      
+      printf("Ready!\n");
       free(line);
       fclose(file);
+
+      uswtime(&utime0, &stime0, &wtime0); //tomando el tiempo  
+	printf("\nBenchmarks (sec):\n"); 
+	printf("real %.3f\n", wtime0 - wtime2); 
+	printf("user %.3f\n", utime0 - utime2); 
+	printf("sys %.3f\n", stime0 - stime2); 
+	printf("\n"); 
+	printf("CPU/Wall %.3f %% \n",
+	       100.0 * (utime0 - utime2 + stime0 - stime2) / (wtime0 - wtime2));
+	printf("\n");
+
+      
       /*  
       for(i=0;i<N;i++){
 	printf("%f,",signal[i]);
@@ -346,7 +368,7 @@ int main(int argc, char **argv){
 
       realft(subset, 2*window, isign);
 
-      sprintf(outputfile,"spectrum-mpi-%i.dat",index);
+      sprintf(outputfile,"output/spectrum-mpi-%i.dat",index);
       file = fopen(outputfile,"w");
       for (int i=0;i< (int)window; i++){
 	fprintf(file,"%f\n",subset[2*i]);
@@ -401,6 +423,16 @@ int main(int argc, char **argv){
       if ((n)*window >= N ){
 	printf("Finish: data computed:%i total:%i!\n",(n)*window,N);
 	printf("Spectrum computed: %i\n",n);
+
+	uswtime(&utime1, &stime1, &wtime1);
+	printf("\nBenchmarks (sec):\n"); 
+	printf("real %.3f\n", wtime1 - wtime0); 
+	printf("user %.3f\n", utime1 - utime0); 
+	printf("sys %.3f\n", stime1 - stime0); 
+	printf("\n"); 
+	printf("CPU/Wall %.3f %% \n",
+	       100.0 * (utime1 - utime0 + stime1 - stime0) / (wtime1 - wtime0));
+	printf("\n");
 	break;
       }
     } //while(1)      

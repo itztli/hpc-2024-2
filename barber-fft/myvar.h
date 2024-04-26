@@ -7,10 +7,8 @@ extern "C" {
 
 
 typedef struct{
-  double a;
-  double b;
-  double dx;
-  double F; //result of the integral
+  int index;
+  float *subset;
 }MPI_myvar;
   
 
